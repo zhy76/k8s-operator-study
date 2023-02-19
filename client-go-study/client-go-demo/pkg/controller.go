@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"context"
+	v14 "k8s.io/api/core/v1"
 	v12 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v13 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -54,7 +55,7 @@ func (c *controller) enqueue(obj interface{}) {
 func (c *controller) deleteIngress(obj interface{}) {
 	ingress := obj.(*v12.Ingress)
 	ownerReference := v13.GetControllerOf(ingress)
-	if ownerReference != nil {
+	if ownerReference == nil {
 		return
 	}
 	if ownerReference.Kind != "Service" {
@@ -72,7 +73,6 @@ func (c *controller) Run(stopCh chan struct{}) {
 
 func (c *controller) worker() {
 	for c.processNextItem() {
-
 	}
 }
 
@@ -117,7 +117,7 @@ func (c *controller) syncService(key string) error {
 
 	if ok && errors.IsNotFound(err) {
 		//create ingress
-		ig := c.constructIngress(namespaceKey, name)
+		ig := c.constructIngress(service)
 		_, err := c.client.NetworkingV1().Ingresses(namespaceKey).Create(context.TODO(), ig, v13.CreateOptions{})
 		if err != nil {
 			return err
@@ -141,12 +141,18 @@ func (c *controller) handlerError(key string, err error) {
 	c.queue.Forget(key)
 }
 
-func (c *controller) constructIngress(namespaceKey string, name string) *v12.Ingress {
+func (c *controller) constructIngress(service *v14.Service) *v12.Ingress {
 	ingress := v12.Ingress{}
-	ingress.Name = name
-	ingress.Namespace = namespaceKey
+
+	ingress.ObjectMeta.OwnerReferences = []v13.OwnerReference{
+		*v13.NewControllerRef(service, v14.SchemeGroupVersion.WithKind("Service")),
+	}
+	ingress.Name = service.Name
+	ingress.Namespace = service.Namespace
 	pathType := v12.PathTypePrefix
+	icn := "nginx"
 	ingress.Spec = v12.IngressSpec{
+		IngressClassName: &icn,
 		Rules: []v12.IngressRule{
 			{
 				Host: "example.com",
@@ -158,7 +164,7 @@ func (c *controller) constructIngress(namespaceKey string, name string) *v12.Ing
 								PathType: &pathType,
 								Backend: v12.IngressBackend{
 									Service: &v12.IngressServiceBackend{
-										Name: name,
+										Name: service.Name,
 										Port: v12.ServiceBackendPort{
 											Number: 80,
 										},
