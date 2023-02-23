@@ -1,0 +1,7 @@
+apiVersion: appcontroller.zhy.com/v1alpha1
+kind: App
+metadata:
+  name: example-app
+spec:
+  deploymentName: example-app
+  replicas: 1
